@@ -1,0 +1,30 @@
+syntax = "proto3";
+package taskmanager;
+
+// The main 'Task' message
+message Task {
+	int32 id = 1;
+	string description = 2;
+	bool completed = 3;
+}
+
+service TaskService {
+	rpc ViewTasks (ViewTasksRequest) returns (ViewTasksResponse); // view all tasks
+	rpc CreateTask (CreateTaskRequest) returns (Task); // create a new task
+	rpc UpdateTask  (UpdateTaskRequest) returns (Task); // Update task's status
+}
+
+// Requests
+message ViewTasksRequest {}
+message CreateTaskRequest {
+	string description = 1;
+}
+message UpdateTaskRequest {
+	int32 id = 1;
+	bool completed = 2;
+}
+
+// Responses
+message ViewTasksResponse {
+	repeated Task tasks = 1;
+}
