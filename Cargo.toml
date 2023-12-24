@@ -9,16 +9,16 @@ name = "server"
 path = "src/server.rs"
 
 # Binary for the gRPC client
-[[bin]]
-name = "client"
-path = "src/client.rs"
+# [[bin]]
+# name = "client"
+# path = "src/client.rs"
 
 [dependencies]
 clap = "4.4.11"
 prost = "0.12.3"
 redis = { version = "0.24.0", features = ["tokio-comp"] }
 thiserror = "1.0.51"
-tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "full"] }
 tonic = "0.10.2"
 
 [build-dependencies]

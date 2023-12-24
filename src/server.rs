@@ -3,14 +3,18 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use errors::MyError;
 use redis::{Commands, RedisError};
 use prost::Message;
+use tokio::sync::oneshot;
 use tonic::{transport::Server, Request, Response, Status};
+
+use tasks::task_service_client::TaskServiceClient;
 use tasks::task_service_server::{TaskService, TaskServiceServer};
 use tasks::{ViewTasksRequest, CreateTaskRequest, UpdateTaskRequest, ViewTasksResponse, Task};
 
+use errors::MyError;
 mod errors;
+
 pub mod tasks {
     tonic::include_proto!("taskmanager");
 }
@@ -76,17 +80,66 @@ impl TaskService for MyTaskService {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn start_server(tx: oneshot::Sender<bool>) -> Result<(), MyError>{
+    println!("Starting the server task!");
+    
+    // Redis
     let client = redis::Client::open("redis://127.0.0.1/")?;
     let redis_con = client.get_connection()?;
     let task_service = MyTaskService::new(redis_con);
     
+    // Server
     let addr = "127.0.0.1:50051".parse()?;
-    Server::builder()
-        .add_service(TaskServiceServer::new(task_service))
-        .serve(addr)
-        .await?;
+    let server = Server::builder()
+        .add_service(TaskServiceServer::new(task_service));
+    tx.send(true).unwrap();
+
+    server.serve(addr).await?;
+    Ok(())
+}
+
+async fn start_client(rx: oneshot::Receiver<bool>) -> Result<(), Box<dyn std::error::Error>> {
+    rx.await?;
+    println!("Starting the client task!");
+    let mut client = TaskServiceClient::connect("http://127.0.0.1:50051").await?;
+    let create_request = Request::new(CreateTaskRequest {
+            description: "Walk the dog".to_string()
+        });
+    let create_response = client.create_task(create_request).await?;
+    let created_id = create_response.into_inner().id;
+    println!("{}", format!("created task with id: {}", created_id));
+
+    // let update_request = Request::new(UpdateTaskRequest {
+    //         id: created_id,
+    //         completed: true
+    // });
+    // let update_response = client.update_task(update_request).await?;
+    // println!("Updated task: {:?}", update_response.into_inner());
+    //
+    // let view_request = Request::new(ViewTasksRequest {});
+    // let view_response = client.view_tasks(view_request).await?;
+    // println!("All Tasks: {:?}", view_response.into_inner().tasks);
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), MyError> {
+    let (tx, rx) = oneshot::channel::<bool>();
+    let server_task = tokio::spawn(async move {
+        if let Err(e) = start_server(tx).await {
+            eprintln!("Failed to start server: {}", e)
+        }
+    });
+
+    let client_task = tokio::spawn(async move {
+        match start_client(rx).await {
+            Ok(_) => println!("Client started successfully"),
+            Err(e) => eprintln!("Failed to start Client: {}", e)
+        }
+    });
+
+    let _ = tokio::join!(server_task, client_task);
 
     Ok(())
 }
